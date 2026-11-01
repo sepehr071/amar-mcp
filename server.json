@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sepehr071/amar-mcp",
+  "title": "Statistical Centre of Iran",
+  "description": "Read-only Statistical Centre of Iran (amar.org.ir): CPI inflation, unemployment, census, any table.",
+  "repository": {
+    "url": "https://github.com/sepehr071/amar-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/sepehr071/amar-mcp",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "amar-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "AMAR_MCP_PROXY",
+          "description": "Optional HTTP proxy URL for the amar.org.ir requests; system proxy settings are ignored. Also accepts a comma-separated list: one is used until it gets blocked or fails to connect, then the next.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
