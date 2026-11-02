@@ -31,6 +31,12 @@ def test_list_path():
     assert p.startswith("/statistical-information/catid/3505/year/1404/publishperiod/26/publishtype/31/title/%D8%A8")
     assert p.endswith("/currentpage/2")
 
+    # the site drops year/kind unless a source, type, category or title comes with them
+    assert (
+        site.list_path(None, 1403, None, "table", None, 1)
+        == "/statistical-information/source/13/year/1403/publishtype/31"
+    )
+
 
 async def test_search(client, fake):
     fake[LIST] = fixture_text("list.html")

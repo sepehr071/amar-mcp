@@ -122,6 +122,8 @@ async def release(statid: int) -> dict:
 
 def list_path(query, year, period, kind, category, page, source=None, data_type=None) -> str:
     seg = []
+    if (year or period or kind) and not (source or data_type or category or query):
+        source = "portal"  # the site drops year, period and kind unless a source, type, category or title comes with it
     if source:
         seg += ["source", str(SOURCES[source])]
     if data_type:

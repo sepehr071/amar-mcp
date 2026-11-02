@@ -33,12 +33,15 @@ TOPICS = {  # english alias -> part of the sheet name in the indicators workbook
 
 
 async def latest(title_start: str) -> dict:
-    """The newest catalog release whose title starts with the text, with its Excel file."""
+    """The newest catalog release whose title starts with the text and that has an Excel file (the newest one can be PDF-only)."""
     rows, _ = site.parse_list(await http.fetch_text(site.list_path(title_start, None, None, None, None, 1)))
-    hit = next((r for r in rows if clean(r["title"]).startswith(title_start)), None)
-    if hit is None:
+    hits = [r for r in rows if clean(r["title"]).startswith(title_start)]
+    if not hits:
         raise ToolError(f"No release titled '{title_start}…' was found on amar.org.ir.")
-    return hit
+    for hit in hits:
+        if any(f["type"] in ("xlsx", "xls") for f in (await site.release(hit["id"]))["files"]):
+            return hit
+    raise ToolError(f"No release titled '{title_start}…' has an Excel file.")
 
 
 async def _xlsx(statid: int) -> tuple[dict, dict[str, list[list]], str]:
