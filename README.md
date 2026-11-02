@@ -67,13 +67,13 @@ You need [uv](https://docs.astral.sh/uv/getting-started/installation/). No API k
 | `am_inflation_groups` | Compare inflation across CPI groups (food, housing, transport...) for one month |
 | `am_labour_force` | Unemployment, youth unemployment and participation rates by quarter, total, urban and rural |
 | `am_population` | Population and households by province, or by county in one province, from the 1395 census |
-| `am_search` | Search the portal's releases by Persian title words, year, frequency, type and topic |
+| `am_search` | Search the portal's releases by Persian title words, year, frequency, type and topic (a year, frequency or kind alone searches the portal's own releases) |
 | `am_release` | One release: topic, period and its Excel, PDF and Word files |
 | `am_table` | Read any Excel table of a release as compact rows (sheet list, filter, paging) |
 | `am_calendar` | The publishing calendar: which statistic comes out on which day of a month |
 | `am_gdp` | GDP growth by quarter or year with agriculture, industry, oil and gas, services; levels in billion rials |
 | `am_ppi` | Producer price index by quarter and sector (index, quarterly, year-on-year, 4-quarter average) |
-| `am_indicators` | The monthly macro workbook: trade, housing price and rent, money, budget, household spending, Gini, CPI by decile and province, energy, stock market |
+| `am_indicators` | The monthly macro workbook (newest release that has an Excel file): trade, housing price and rent, money, budget, household spending, Gini, CPI by decile and province, energy, stock market |
 | `am_news` | Latest news and press releases of the Centre, or the text of one item |
 
 All 12 tools are annotated `readOnlyHint: true`.
