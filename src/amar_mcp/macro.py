@@ -129,32 +129,26 @@ async def am_indicators(
         | None,
         Field(
             description="Subject sheet: population (and labour, education), household (income, expenditure, Gini, "
-            "deciles), accounts (national accounts), prices (CPI by decile or province, PPI, food prices), money, "
-            "budget (government finance), trade (exports, imports, balance of payments), stock, energy, industry, "
-            "housing (permits, price and rent), agriculture. Omit to list all topics."
+            "deciles), accounts, prices (CPI by decile or province, PPI, food), money, budget, trade, stock, energy, "
+            "industry, housing (permits, price, rent), agriculture. Omit to list topics."
         ),
     ] = None,
     table: Annotated[
         str | None,
-        Field(description="Table number from the topic's list, or Persian words of its title (e.g. 'اجاره', 'دهک')"),
+        Field(description="Table number from the topic's list, or Persian title words ('اجاره')"),
     ] = None,
     find: Annotated[
-        str | None, Field(description="Only rows whose first cell contains this text (a year, province, month...)")
+        str | None, Field(description="Only rows whose first cell has this text (year, province...)")
     ] = None,
-    last: Annotated[
-        int, Field(description="Rows to return: the latest ones in a time table, else the first", ge=1, le=60)
-    ] = 6,
-    col_offset: Annotated[int, Field(description="Skip this many columns on the left (wide tables)", ge=0)] = 0,
-    max_cols: Annotated[int, Field(description="Columns to return", ge=1, le=40)] = 12,
+    last: Annotated[int, Field(description="Rows: latest in a time table, else first", ge=1, le=60)] = 6,
+    col_offset: Annotated[int, Field(description="Columns to skip on the left", ge=0)] = 0,
+    max_cols: Annotated[int, Field(description="Columns", ge=1, le=40)] = 12,
 ) -> dict:
     """Read the Centre's monthly macro-indicators workbook: trade, housing, money, budget, prices by decile and more.
 
-    The workbook (شاخص های کلان اقتصادی و اجتماعی کشور) stacks about 100 small tables on 12 subjects, mostly
-    annual and recent quarters or months. Call with no arguments for the topics, with `topic` for its table list
-    (n, title), then with `topic` and `table` for the data: columns carry the combined header text, rows are
-    [label, values...]. Dash and '000' placeholders come back as null. Data runs to different dates per table
-    (housing prices stop at 1400, trade at 1404); the release it came from is in `source`. The newest file
-    is found by title, so no id is needed.
+    About 100 small tables on 12 subjects. No arguments lists topics; `topic` lists its tables; `topic` plus
+    `table` gives data (rows are [label, values...]; placeholders are null). Data end dates differ per table
+    (housing price stops at 1400, trade at 1404). No id needed.
     """
     rel = await latest(INDICATORS_TITLE)
     _, sheets, url = await _xlsx(rel["id"])
@@ -215,18 +209,13 @@ def _find_col(header: list, *needles: str, avoid: str | None = None) -> int:
 
 @tool("GDP growth (quarterly)")
 async def am_gdp(
-    frequency: Annotated[
-        Literal["quarterly", "annual"], Field(description="quarterly national accounts or yearly totals")
-    ] = "quarterly",
-    periods: Annotated[int, Field(description="How many latest quarters (or years)", ge=1, le=60)] = 8,
+    frequency: Annotated[Literal["quarterly", "annual"], Field(description="Quarterly or yearly")] = "quarterly",
+    periods: Annotated[int, Field(description="Latest quarters (or years)", ge=1, le=60)] = 8,
 ) -> dict:
     """Get Iran's official GDP growth by quarter or year, with the main sectors, latest first.
 
-    From the Centre's quarterly national accounts (base year 1400 = 2021). growth_pct is the change at constant
-    prices on the same quarter a year earlier; gdp_ex_oil_pct leaves out crude oil and gas. Sector growth is
-    for agriculture, industry (includes oil, mining, manufacturing, construction) and services. Levels are in
-    billion rials. For the full tables (value added by activity, expenditure side) use am_table with the
-    `source.release` id.
+    Base year 1400. growth_pct is year-on-year at constant prices; gdp_ex_oil_pct leaves out oil and gas; sector
+    growth for agriculture, industry, services. Levels in billion rials. Full tables: am_table with `source.release`.
     """
     rel = await latest(GDP_TITLE)
     _, sheets, url = await _xlsx(rel["id"])
@@ -285,16 +274,14 @@ def _season_map(rows: list[list], ycol: int, c0: int) -> dict[str, int]:
 async def am_ppi(
     sector: Annotated[
         str | None,
-        Field(description="Persian name part: 'كل' (default, all sectors), 'كشاورزي', 'معدن', 'صنعت', 'برق', 'خدمات'"),
+        Field(description="Persian name part: 'كل' (default), 'كشاورزي', 'معدن', 'صنعت', 'برق', 'خدمات'"),
     ] = None,
     quarters: Annotated[int, Field(description="How many latest quarters", ge=1, le=60)] = 8,
 ) -> dict:
     """Get Iran's producer price index (PPI, factory-gate prices) by quarter and sector, latest first.
 
-    Per quarter: the index (100 = 1400), the change on the previous quarter, on the same quarter a year earlier
-    (point_to_point_pct) and of the 4-quarter average (annual_pct). Producer prices lead consumer prices, so use it
-    next to am_inflation. Detailed PPI series (industry sub-sectors, poultry, dairy, mining, services) are separate
-    releases: find them with am_search('شاخص قیمت تولید کننده') and read them with am_table.
+    Per quarter: index (100 = 1400), quarterly_pct, point_to_point_pct, annual_pct (4-quarter average). Detailed
+    PPI series are separate releases: am_search('شاخص قیمت تولید کننده') then am_table.
     """
     rel, sheets, url = await _xlsx(PPI_TOTAL)
     tabs = {

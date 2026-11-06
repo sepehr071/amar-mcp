@@ -224,28 +224,24 @@ async def am_inflation(
     region: Annotated[
         Literal["national", "urban", "rural"], Field(description="Households: all of Iran, urban or rural")
     ] = "national",
-    months: Annotated[int, Field(description="How many latest months to return", ge=1, le=60)] = 12,
+    months: Annotated[int, Field(description="Latest months", ge=1, le=60)] = 12,
     group: Annotated[
         str | None,
         Field(
-            description="A CPI group: Persian name part (e.g. 'مسکن', 'خوراک', 'حمل') or its 2-digit code ('04'). "
-            "Omit for the all-items index. See am_inflation_groups for the list."
+            description="CPI group: Persian name part ('مسکن', 'خوراک') or 2-digit code ('04'); omit for all items. "
+            "List: am_inflation_groups"
         ),
     ] = None,
     province: Annotated[
         str | None,
-        Field(
-            description="Province name (e.g. 'تهران', 'خوزستان'): returns that province's all-items inflation instead"
-        ),
+        Field(description="Province name (e.g. 'تهران'): that province's all-items inflation instead"),
     ] = None,
 ) -> dict:
     """Get Iran's official consumer price index (CPI) and inflation from the Statistical Centre of Iran, latest first.
 
-    Per month: the index, the change on the previous month (monthly_pct), the change on the same month a year
-    earlier (point_to_point_pct, the headline "inflation" figure) and the change of the 12-month average on the
-    previous 12 months (twelve_month_avg_pct, "annual inflation"). Use region and group for a breakdown (food,
-    housing, ...) or province for one province (no index there, no groups). `newer_report` appears when the portal
-    has published a later month as PDF before its Excel series is updated.
+    Per month: index, monthly_pct, point_to_point_pct (year-on-year, the headline figure) and twelve_month_avg_pct
+    ("annual inflation"). `group` or `region` for breakdowns; `province` gives one province (no index, no groups).
+    `newer_report` appears when the portal has a later month as PDF only.
     """
     sheets, src = await _cpi_file(region)
     if province:
@@ -304,15 +300,12 @@ async def am_inflation_groups(
     region: Annotated[
         Literal["national", "urban", "rural"], Field(description="Households: all of Iran, urban or rural")
     ] = "national",
-    period: Annotated[
-        str | None, Field(description="Month as YYYY-MM (e.g. '1405-06'); omit for the latest month")
-    ] = None,
+    period: Annotated[str | None, Field(description="Jalali YYYY-MM (e.g. '1405-06'); omit for latest")] = None,
 ) -> dict:
     """Compare official inflation across CPI groups (food, housing, transport, health...) for one month.
 
-    For each main group: the index, the monthly change, the change on the same month a year earlier
-    (point_to_point_pct) and the 12-month average change. Use it to see what drives inflation. For one group's
-    history over many months use am_inflation with `group`.
+    Per main group: index, monthly_pct, point_to_point_pct, twelve_month_avg_pct. For one group's history use
+    am_inflation with `group`.
     """
     sheets, src = await _cpi_file(region)
     t = [sheets[f"جدول {n}"] for n in (1, 2, 3, 4)]
@@ -378,18 +371,14 @@ def _quarters(rows: list[list], n: int) -> list[tuple[str, float | None]]:
 async def am_labour_force(
     measure: Annotated[
         Literal["all", "unemployment", "participation", "youth_unemployment"],
-        Field(
-            description="unemployment = rate for people 15 and older; participation = economic participation rate; "
-            "youth_unemployment = ages 15-24; all = unemployment and participation"
-        ),
+        Field(description="unemployment (15+), participation, youth_unemployment (15-24); all = first two"),
     ] = "all",
-    quarters: Annotated[int, Field(description="How many latest quarters", ge=1, le=40)] = 8,
+    quarters: Annotated[int, Field(description="Latest quarters", ge=1, le=40)] = 8,
 ) -> dict:
     """Get Iran's official unemployment and labour-force participation rates by quarter, latest first.
 
-    From the Statistical Centre's labour force survey: percent of the active population (unemployment) or of the
-    population 15+ (participation), for the whole country, urban and rural areas. The newest quarter lags about
-    two to three months. For other labour tables (employment by sector, hours, wages) use am_search.
+    Percent, for the whole country, urban and rural. The newest quarter lags 2-3 months. Other labour tables
+    (employment by sector, hours, wages): am_search.
     """
     wanted = {
         "unemployment": UNEMPLOYMENT,
@@ -402,7 +391,7 @@ async def am_labour_force(
         wanted = {measure: wanted[measure]}
     jobs = {(m, reg): excel_of(sid) for m, ids in wanted.items() for reg, sid in ids.items()}
     found = dict(zip(jobs, await asyncio.gather(*jobs.values()), strict=True))
-    out: dict = {"unit": "percent", "note": "unemployment: share of active population; participation: share of 15+"}
+    out: dict = {"unit": "percent"}
     src = {}
     for m, ids in wanted.items():
         merged: dict[str, dict] = {}
@@ -426,14 +415,13 @@ async def am_labour_force(
 async def am_population(
     province: Annotated[
         str | None,
-        Field(description="Province name (e.g. 'فارس', 'گیلان'): lists its counties instead of all provinces"),
+        Field(description="Province name (e.g. 'فارس'): lists its counties instead of all provinces"),
     ] = None,
 ) -> dict:
     """Get population and households by province, or by county within one province, from Iran's 1395 census.
 
-    The latest published full census (Aban 1395 = 2016) with total, urban, rural, male and female population and
-    households. The 1405 census is under way and not published yet. For projections to later years or age groups
-    use am_search ('پیش بینی جمعیت') and am_table.
+    Latest published census (1395 = 2016): total, urban, rural, male, female, households. The 1405 census is not
+    published. Projections or age groups: am_search and am_table.
     """
     rel, f = await excel_of(CENSUS_COUNTIES)
     rows = next(iter((await book(http.SITE + f["url"])).values()))
@@ -484,23 +472,19 @@ def _cell(x):
 
 @tool("Read an Excel table")
 async def am_table(
-    id: Annotated[int, Field(description="Release id from am_search or am_release", ge=1)],
-    file: Annotated[int, Field(description="Which Excel file of the release (1-based, see am_release)", ge=1)] = 1,
-    sheet: Annotated[
-        str | None, Field(description="Sheet name or 1-based number. Omit to list the sheets first.")
-    ] = None,
-    find: Annotated[str | None, Field(description="Only rows that contain this text in any cell")] = None,
-    offset: Annotated[int, Field(description="Skip this many matching rows (for paging)", ge=0)] = 0,
-    max_rows: Annotated[int, Field(description="Rows to return", ge=1, le=200)] = 40,
-    col_offset: Annotated[int, Field(description="Skip this many columns on the left (wide time series)", ge=0)] = 0,
-    max_cols: Annotated[int, Field(description="Columns to return", ge=1, le=60)] = 14,
+    id: Annotated[int, Field(description="Release id from am_search", ge=1)],
+    file: Annotated[int, Field(description="Excel file number (1-based, see am_release)", ge=1)] = 1,
+    sheet: Annotated[str | None, Field(description="Sheet name or 1-based number; omit to list sheets")] = None,
+    find: Annotated[str | None, Field(description="Only rows with this text in any cell")] = None,
+    offset: Annotated[int, Field(description="Matching rows to skip (paging)", ge=0)] = 0,
+    max_rows: Annotated[int, Field(description="Rows", ge=1, le=200)] = 40,
+    col_offset: Annotated[int, Field(description="Columns to skip on the left (wide series)", ge=0)] = 0,
+    max_cols: Annotated[int, Field(description="Columns", ge=1, le=60)] = 14,
 ) -> dict:
     """Read an Excel table of a statistical release as compact rows (works for any release with an xlsx/xls file).
 
-    First call with just the id: you get the sheet list with sizes and titles. Then pass `sheet`; rows come as
-    [excel_row_number, cell, cell...] with empty rows removed. Use `find` to pick rows (e.g. a province or a group
-    name), `offset` to page and `col_offset` for wide monthly series (the newest values are usually at the right
-    end: see `cols` in the answer). Files over 25 MB are refused.
+    Call with just the id for the sheet list, then `sheet`; rows are [excel_row_number, cell...]. `find` picks
+    rows, `offset` pages, `col_offset` shifts wide series (newest values are usually at the right end; see `cols`).
     """
     rel, f = await excel_of(id, file)
     sheets = await book(http.SITE + f["url"])

@@ -145,16 +145,12 @@ def list_path(query, year, period, kind, category, page, source=None, data_type=
 
 @tool("Search statistical releases")
 async def am_search(
-    query: Annotated[
-        str | None, Field(description="Persian words in the title, e.g. 'نرخ بیکاری', 'تولید ناخالص', 'جمعیت استان'")
-    ] = None,
-    year: Annotated[
-        int | None, Field(description="Jalali year of the statistical time, e.g. 1404", ge=1335, le=1410)
-    ] = None,
+    query: Annotated[str | None, Field(description="Persian title words, e.g. 'نرخ بیکاری'")] = None,
+    year: Annotated[int | None, Field(description="Jalali year, e.g. 1404", ge=1335, le=1410)] = None,
     period: Annotated[
         Literal["monthly", "quarterly", "half-yearly", "yearly", "biennial", "periodic", "irregular", "unscheduled"]
         | None,
-        Field(description="How often the release is published"),
+        Field(description="Publishing frequency"),
     ] = None,
     kind: Annotated[
         Literal[
@@ -171,35 +167,26 @@ async def am_search(
             "estimate",
         ]
         | None,
-        Field(description="Type of publication"),
+        Field(description="Publication type"),
     ] = None,
     category: Annotated[
         Literal["population", "economic", "cross-sector", "census", "methodology"] | None,
-        Field(
-            description="Top-level topic: population = demographic and social, economic, cross-sector = cross-cutting and environment"
-        ),
+        Field(description="Top-level topic (population = demographic and social)"),
     ] = None,
-    page: Annotated[int, Field(description="Page of 25 results, 1-based", ge=1, le=200)] = 1,
+    page: Annotated[int, Field(description="Page of 25 results", ge=1, le=200)] = 1,
     source: Annotated[
         Literal["portal", "info-services", "digital-library", "other"] | None,
-        Field(
-            description="Which Centre system holds it: the national portal, statistical info services, digital library"
-        ),
+        Field(description="Which Centre system holds it"),
     ] = None,
     data_type: Annotated[
         Literal["tables", "publications", "metadata", "visual"] | None,
-        Field(
-            description="The portal's data type: statistical tables, publications and reports, metadata and microdata, images"
-        ),
+        Field(description="The portal's data type"),
     ] = None,
 ) -> dict:
     """Search the Statistical Centre of Iran (amar.org.ir) catalog of releases: tables, time series, reports.
 
-    Use it to find a release by Persian title words, year, how often it is published or its type. With no filters
-    it lists the newest releases. Each result has an id: pass it to am_release for the files, or to am_table to read
-    an Excel table. Ready tools need no search: am_inflation, am_labour_force, am_population, am_gdp, am_ppi and
-    am_indicators (trade, housing, money, budget, household income and spending). `source` and `data_type` narrow
-    by the portal's own system and data type (tables, publications, metadata, visual).
+    No filters lists the newest. Each result has an id for am_release (files) or am_table (Excel). Inflation, labour,
+    population, GDP, PPI and macro indicators have their own tools.
     """
     path = list_path(query, year, period, kind, category, page, source, data_type)
     rows, last = parse_list(await http.fetch_text(path))
@@ -208,12 +195,11 @@ async def am_search(
 
 @tool("Get one release")
 async def am_release(
-    id: Annotated[int, Field(description="Release id from am_search, e.g. 58298", ge=1)],
+    id: Annotated[int, Field(description="Release id from am_search", ge=1)],
 ) -> dict:
     """Get one statistical release from amar.org.ir: title, topic path, period and its downloadable files.
 
-    Use it after am_search. Files are Excel (xlsx/xls), PDF or Word links; read an Excel file with am_table
-    (passing this id), open the PDF link yourself. A release the portal removed gives an error.
+    Use after am_search. Read Excel files with am_table (same id); PDF and Word are links only.
     """
     r = await release(id)
     for f in r["files"]:
@@ -259,19 +245,14 @@ def parse_calendar(page: str) -> list[dict]:
 
 @tool("Release calendar")
 async def am_calendar(
-    year: Annotated[int, Field(description="Jalali year of the calendar", ge=1400, le=1410)] = 1405,
-    month: Annotated[
-        str | None, Field(description="Month number 1-12 or Persian name (e.g. 'آبان'); omit for the whole year")
-    ] = None,
-    query: Annotated[
-        str | None, Field(description="Persian words in the product name, all must match, e.g. 'نیروی کار' or 'مصرفی'")
-    ] = None,
+    year: Annotated[int, Field(description="Jalali year", ge=1400, le=1410)] = 1405,
+    month: Annotated[str | None, Field(description="Month 1-12 or Persian name; omit for the year")] = None,
+    query: Annotated[str | None, Field(description="Persian product-name words, all must match, e.g. 'مصرفی'")] = None,
 ) -> dict:
     """Get the Statistical Centre of Iran's publishing calendar: which statistics come out on which day of a month.
 
-    Use it to answer "when is the next inflation (or labour force, GDP...) release". Each item gives the product,
-    the responsible office, the month and day it is scheduled for and the period it covers. `id` is set once the
-    release is published: pass it to am_release. Dates are Jalali (month 1 = فروردین). Planned dates can shift.
+    Use it for "when is the next inflation (or labour, GDP...) release". Items: product, office, month, day, period
+    covered; `id` appears once published (pass to am_release). Jalali dates; planned dates can shift.
     """
     try:
         page = await http.fetch_text(f"/publishing-calendar{year}")
@@ -347,20 +328,16 @@ def parse_article(page: str, news_id: int) -> dict:
 
 @tool("News and press releases")
 async def am_news(
-    id: Annotated[int | None, Field(description="News item id from the list, to read its text", ge=1)] = None,
+    id: Annotated[int | None, Field(description="News id from the list, to read its text", ge=1)] = None,
     query: Annotated[
-        str | None, Field(description="Persian words that must all appear in the title or summary (list mode)")
+        str | None, Field(description="Persian words that must all appear in title or summary (list mode)")
     ] = None,
-    count: Annotated[
-        int, Field(description="How many latest items to fetch for the list (newest first)", ge=1, le=50)
-    ] = 15,
+    count: Annotated[int, Field(description="How many latest items for the list", ge=1, le=50)] = 15,
 ) -> dict:
     """List the latest news and press releases of the Statistical Centre of Iran, or read one item.
 
-    Without `id` it returns the newest items (id, title, summary, GMT time, url) from the portal's news feed;
-    `query` keeps only items whose title or summary has all those words. With `id` it returns the item's date,
-    categories and text (long items are cut at 4000 characters). Use it for announcements such as census news,
-    interviews and release notes; the numbers themselves are in the data tools.
+    Without `id`: newest items (id, title, summary, GMT time, url), filtered by `query`. With `id`: the item's
+    date, categories and text (cut at 4000 characters). For announcements; numbers are in the data tools.
     """
     if id is not None:
         return parse_article(await http.fetch_text(f"/news/id/{id}"), id)
