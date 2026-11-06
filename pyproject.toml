@@ -1,6 +1,6 @@
 [project]
 name = "amar-mcp"
-version = "0.1.1"
+version = "0.2.0"
 description = "Unofficial read-only MCP server for the Statistical Centre of Iran (amar.org.ir): CPI inflation, unemployment, population, release tables."
 readme = "README.md"
 license = "MIT"
