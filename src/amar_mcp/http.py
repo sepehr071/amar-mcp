@@ -7,6 +7,7 @@ into `ToolError` messages the model can act on.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
 import random
 import time
@@ -43,6 +44,11 @@ CACHE_MAX = 24
 CACHE_MAX_ITEM = 3_000_000  # bytes; bigger downloads are not kept
 RETRY_DELAY = 0.5
 MAX_BODY = 25_000_000  # bytes; larger responses are refused
+# Hosted routers cut a tool call at 20 s: a whole call gets CALL_BUDGET seconds (server.compact), each upstream attempt
+# REQUEST_TIMEOUT, so a stalled request still leaves room for one retry and the caller gets a clear message, not a hang.
+CALL_BUDGET = 15.0
+# curl_cffi (stream mode) gives up after connect + read = 10 s without any data; a slow but flowing download is not cut
+REQUEST_TIMEOUT = httpx.Timeout(6, connect=4)
 
 _transport: httpx.AsyncBaseTransport | None = None
 _client: httpx.AsyncClient | None = None
@@ -50,7 +56,19 @@ _limit: asyncio.Semaphore | None = None
 _proxy_index = 0
 _retired: set[asyncio.Task] = set()
 _cache: dict[str, tuple[float, bytes]] = {}
+_inflight: dict[str, asyncio.Future[bytes]] = {}
 _bundle: str | None = None
+_deadline: contextvars.ContextVar[float] = contextvars.ContextVar("amar_deadline", default=float("inf"))
+
+
+def start_call() -> None:
+    """Start the CALL_BUDGET clock for the current tool call (a contextvar: concurrent calls keep their own)."""
+    _deadline.set(time.monotonic() + CALL_BUDGET)
+
+
+def time_left() -> float:
+    """Seconds left of the current tool call's budget (inf outside a tool call)."""
+    return _deadline.get() - time.monotonic()
 
 
 class _NavTransport(AsyncCurlTransport):
@@ -77,6 +95,7 @@ def set_transport(transport: httpx.AsyncBaseTransport | None) -> None:
     global _transport, _client, _limit, _proxy_index
     _transport, _client, _limit, _proxy_index = transport, None, None, 0
     _cache.clear()
+    _inflight.clear()
 
 
 def _ca_bundle() -> str:
@@ -112,7 +131,7 @@ def _next_proxy(client: httpx.AsyncClient) -> None:
 
 
 async def _close_later(client: httpx.AsyncClient) -> None:
-    await asyncio.sleep(60)  # longer than the request timeout
+    await asyncio.sleep(60)  # longer than any request (CALL_BUDGET)
     await client.aclose()
 
 
@@ -132,7 +151,7 @@ def _get_client() -> tuple[httpx.AsyncClient, asyncio.Semaphore]:
                 max_connections=2 * MAX_CONCURRENCY,
             ),
             headers=HEADERS,
-            timeout=httpx.Timeout(45, connect=8),
+            timeout=REQUEST_TIMEOUT,
             limits=httpx.Limits(max_connections=2 * MAX_CONCURRENCY),
             follow_redirects=True,
             max_redirects=4,
@@ -156,6 +175,15 @@ async def fetch(url: str) -> bytes:
         raise ApiError(f"Refusing to call unexpected host {host}.")
     if (hit := _cache.get(url)) and time.monotonic() - hit[0] < CACHE_TTL:
         return hit[1]
+    # one download per URL: a retry after a timed-out call joins the download still running (shielded, so one
+    # caller's cancel does not stop it for the others)
+    if (job := _inflight.get(url)) is None:
+        job = _inflight[url] = asyncio.ensure_future(_download(url, host))
+        job.add_done_callback(lambda j: _inflight.pop(url, None) if _inflight.get(url) is j else None)
+    return await asyncio.shield(job)
+
+
+async def _download(url: str, host: str) -> bytes:
     for attempt in range(MAX_RETRIES + 1):
         last = attempt == MAX_RETRIES
         wait = RETRY_DELAY * 2**attempt * random.uniform(1, 1.5)

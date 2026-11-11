@@ -1,5 +1,6 @@
 """MCP server entry point: registers every read-only Statistical Centre of Iran tool."""
 
+import asyncio
 import functools
 import inspect
 import json
@@ -8,7 +9,7 @@ import logging
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import __version__, data, macro, site  # noqa: F401  (imports register the tools)
+from . import __version__, data, http, macro, site  # noqa: F401  (imports register the tools)
 from .registry import TOOLS
 
 INSTRUCTIONS = """\
@@ -52,7 +53,22 @@ def compact(fn):
 
     @functools.wraps(fn)
     async def run(*args, **kwargs):
-        return json.dumps(_slim(await fn(*args, **kwargs), top=True), ensure_ascii=False, separators=(",", ":"))
+        http.start_call()
+        task = asyncio.ensure_future(fn(*args, **kwargs))
+        try:
+            done, _ = await asyncio.wait({task}, timeout=http.CALL_BUDGET)
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        if not done:
+            # left running (asyncio.wait does not wait for a cancel): its downloads fill the cache, so a retry is fast
+            task.add_done_callback(lambda t: t.cancelled() or t.exception())
+            raise http.ApiError(
+                f"amar.org.ir did not answer within {http.CALL_BUDGET:g} s (the portal is slow or unreachable). "
+                "Try again in a moment."
+            )
+        out = task.result()
+        return json.dumps(_slim(out, top=True), ensure_ascii=False, separators=(",", ":"))
 
     run.__doc__ = inspect.cleandoc(fn.__doc__ or "")
     return run

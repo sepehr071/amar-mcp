@@ -1,5 +1,7 @@
+import asyncio
 import io
 
+import httpx
 import openpyxl
 import pytest
 from conftest import fixture_bytes, fixture_text
@@ -194,3 +196,40 @@ async def test_headers_look_like_a_chrome_navigation(fake):
     assert (h["sec-fetch-mode"], h["sec-fetch-dest"], h["sec-fetch-site"]) == ("navigate", "document", "same-origin")
     assert h["referer"] == "https://amar.org.ir/statistical-information" and "origin" not in h
     assert h["accept-language"].startswith("fa-IR")
+
+
+async def test_inflation_drops_the_newer_report_rather_than_run_out_of_time(client, fake, monkeypatch):
+    async def slow(end):
+        await asyncio.sleep(5)
+
+    serve_book(fake, 28579, "/Portals/0/Statistics/cpi.xlsx", "cpi_national.xlsx")
+    monkeypatch.setattr(http, "CALL_BUDGET", 1.5)
+    monkeypatch.setattr(data, "_newest_report", slow)
+    r = (await client.call_tool("am_inflation", {"months": 1})).structured_content
+    assert r["as_of"] == "1405-06" and "newer_report" not in r
+
+
+async def test_a_call_that_outlives_the_budget_gets_a_clear_error(client, monkeypatch):
+    async def stall(request):
+        await asyncio.sleep(5)
+        return httpx.Response(200, text="<html></html>")
+
+    monkeypatch.setattr(http, "CALL_BUDGET", 0.2)
+    http.set_transport(httpx.MockTransport(stall))
+    result = await client.call_tool("am_calendar", {})
+    assert result.is_error and "did not answer within 0.2 s" in result.content[0].text
+
+
+async def test_a_retry_joins_the_download_still_running(monkeypatch):
+    calls = []
+
+    async def slow(request):
+        calls.append(request)
+        await asyncio.sleep(0.2)
+        return httpx.Response(200, content=b"body")
+
+    http.set_transport(httpx.MockTransport(slow))
+    first = asyncio.ensure_future(http.fetch("/x"))
+    await asyncio.sleep(0.05)
+    first.cancel()  # the timed-out call
+    assert await http.fetch("/x") == b"body" and len(calls) == 1

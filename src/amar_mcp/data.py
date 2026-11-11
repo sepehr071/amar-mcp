@@ -263,8 +263,13 @@ async def am_inflation(
         "months": [{"period": p, **{k: v.get(p) for k, v in cols.items()}} for p in periods],
         "source": src,
     }
-    if periods and (n := await _newest_report(tuple(map(int, periods[0].split("-"))))):
-        out["newer_report"] = n
+    if periods:
+        try:  # a bonus: dropped rather than letting it push the whole answer past the time budget
+            n = await asyncio.wait_for(_newest_report(tuple(map(int, periods[0].split("-")))), http.time_left() - 1)
+        except asyncio.TimeoutError:
+            n = None
+        if n:
+            out["newer_report"] = n
     return out
 
 
