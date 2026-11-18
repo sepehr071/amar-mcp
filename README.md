@@ -78,17 +78,6 @@ You need [uv](https://docs.astral.sh/uv/getting-started/installation/). No API k
 
 All 12 tools are annotated `readOnlyHint: true`.
 
-## How it works
-
-```text
-  AI agent  ──MCP/stdio──▶  amar-mcp  ──HTTPS──▶  amar.org.ir  (release pages, Excel files)
-```
-
-The portal has no JSON API, so the server reads its catalog pages and downloads the Excel files that the portal
-itself offers, then parses them. It sends browser-like requests (Chrome TLS fingerprint), makes at most 3 concurrent
-requests, caches answers for 5 minutes and refuses files over 25 MB. The site's certificate chain is incomplete (it
-omits an intermediate); the server ships that public intermediate certificate to verify the connection normally.
-
 ## FAQ
 
 **Why does it fail from outside Iran?** amar.org.ir does not answer foreign IPs. Run it on an Iranian connection or set `AMAR_MCP_PROXY`.
